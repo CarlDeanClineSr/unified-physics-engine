@@ -1,87 +1,83 @@
-import os
 import requests
 import pandas as pd
 from datetime import datetime, timedelta
-import time
+import os
 
 # ==============================================================================
-# IMPERIAL PHYSICS ENGINE - SURFACE NODE INGEST
-# AUTHORITY: COMMANDER CARL DEAN CLINE SR.
-# TARGET: USGS GEOMAGNETISM NETWORK
+# USGS GROUND HARVESTER (CORRECTED)
+# AUTHORITY: Dr. Carl Dean Cline Sr.
+# PURPOSE: Extract NUMERIC DATA (nT), not Labels.
 # ==============================================================================
 
-# TARGET NODES (STATIONS)
-# BOU = Boulder (Mid-Latitude Baseline)
-# FRD = Fredericksburg (Mid-Latitude)
-# CMO = College, Alaska (High-Latitude/Auroral Lattice Stress)
-STATIONS = ["BOU", "FRD", "CMO"]
-
+# CONFIGURATION
+# College (CMO) or Fredericksburg (FRD) are good baselines
+OBSERVATORY = "CMO" 
 OUTPUT_DIR = "data/raw/usgs"
 
-def setup_directories():
-    if not os.path.exists(OUTPUT_DIR):
-        os.makedirs(OUTPUT_DIR)
-
-def fetch_station_data(station):
-    """
-    Pulls raw magnetometer data.
-    Imperial Protocol: We look for magnetic tension elements (H, D, Z, F).
-    """
-    print(f">>> ACCESSING SURFACE NODE: {station}...")
+def harvest_ground_data():
+    print(f">>> TARGETING USGS OBSERVATORY: {OBSERVATORY}...")
     
-    # Calculate Imperial Time Window (Last 24 Hours)
+    # 1. Define Time Window (Last 24 Hours)
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(days=1)
     
-    # Format for USGS API
-    # Example: https://geomag.usgs.gov/ws/data/?id=BOU&type=variation&param=F&starttime=...
-    base_url = "https://geomag.usgs.gov/ws/data/"
-    
+    # 2. Build URL (USGS JSON API)
+    # We specifically request 'F' (Total Field) and 'H' (Horizontal)
+    url = "https://geomag.usgs.gov/ws/data/"
     params = {
-        "id": station,
+        "id": OBSERVATORY,
         "type": "variation",
+        "elements": "F",
+        "sampling_period": 60,
         "format": "json",
-        "sampling_period": 60, # 1-minute cadence
-        "starttime": start_time.strftime("%Y-%m-%dT%H:%M:%S"),
-        "endtime": end_time.strftime("%Y-%m-%dT%H:%M:%S")
+        "starttime": start_time.strftime("%Y-%m-%dT%H:%M:%S") + "Z",
+        "endtime": end_time.strftime("%Y-%m-%dT%H:%M:%S") + "Z"
     }
-
+    
     try:
-        r = requests.get(base_url, params=params, timeout=20)
-        r.raise_for_status()
-        data = r.json()
+        response = requests.get(url, params=params, timeout=30)
+        response.raise_for_status()
+        data = response.json()
         
-        # Parse the nested JSON structure USGS uses
-        if 'times' in data and 'values' in data:
-            df = pd.DataFrame()
-            df['time_tag'] = data['times']
+        # 3. PARSE THE JSON (THE CRITICAL FIX)
+        # We must dig into ['timeseries'][0]['values']
+        if 'timeseries' not in data or not data['timeseries']:
+            print("!!! ERROR: No data returned from USGS.")
+            return
+
+        # Extract the list of values
+        # Each item looks like: {'date': '2026-01-29T...', 'value': 52104.3}
+        records = data['timeseries'][0]['values']
+        
+        if not records:
+            print("!!! ERROR: Data list is empty.")
+            return
+
+        # Convert to DataFrame
+        df = pd.DataFrame(records)
+        
+        # RENAME COLUMNS (Standardize for the Engine)
+        # The API gives 'date' and 'value'. We want 'time_tag' and 'F'.
+        df.rename(columns={'date': 'time_tag', 'value': 'F'}, inplace=True)
+        
+        # Force Numeric on 'F' column (Removes any non-number junk)
+        df['F'] = pd.to_numeric(df['F'], errors='coerce')
+        
+        # 4. SAVE
+        if not os.path.exists(OUTPUT_DIR):
+            os.makedirs(OUTPUT_DIR)
             
-            # Extract components (X, Y, Z or H, D, Z depending on station config)
-            for component in data['values']:
-                col_name = list(component.keys())[0] # e.g., 'BOUH'
-                # Clean column name to generic 'H', 'D', 'Z'
-                clean_name = col_name.replace(station, "") 
-                df[clean_name] = component[col_name]
-            
-            # Save Raw Artifact
-            filename = f"{station}_harvest_{end_time.strftime('%Y%m%d_%H%M')}.csv"
-            filepath = os.path.join(OUTPUT_DIR, filename)
-            df.to_csv(filepath, index=False)
-            print(f">>> {station} SECURED. {len(df)} DATA POINTS.")
-            return True
-            
+        timestamp = end_time.strftime("%Y%m%d_%H%M")
+        filename = f"{OBSERVATORY}_harvest_{timestamp}.csv"
+        filepath = os.path.join(OUTPUT_DIR, filename)
+        
+        df.to_csv(filepath, index=False)
+        print(f">>> SUCCESS. GROUND DATA SECURED: {filepath}")
+        print(f">>> SAMPLES: {len(df)}")
+        print(f">>> SAMPLE DATA: {df.iloc[0]['F']} nT") # Print one number to prove it works
+
     except Exception as e:
-        print(f"!!! CONNECTION FAILURE ({station}): {e}")
-        return False
+        print(f"!!! HARVEST FAILED: {e}")
 
 if __name__ == "__main__":
-    print(">>> IMPERIAL PHYSICS ENGINE: GROUND SEQUENCER ACTIVE <<<")
-    setup_directories()
-    
-    success_count = 0
-    for station in STATIONS:
-        if fetch_station_data(station):
-            success_count += 1
-        time.sleep(1) # Polite pause between requests
-        
-    print(f">>> GROUND HARVEST COMPLETE. {success_count}/{len(STATIONS)} NODES REPORTING. <<<")
+    harvest_ground_data()
