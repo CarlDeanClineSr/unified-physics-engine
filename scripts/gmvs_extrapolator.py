@@ -5,14 +5,15 @@ import numpy as np
 from datetime import datetime
 
 # ==============================================================================
-# GMVS EXTRAPOLATOR (IMPERIAL PHYSICS)
+# GMVS EXTRAPOLATOR (PURE IMPERIAL)
 # AUTHORITY: Dr. Carl Dean Cline Sr.
-# OBJECTIVE: Map the curvature of the Geomagnetic Vacuum Sheet.
+# STATUS: CORRECTED (No Statistical Smoothing/Averaging)
 # ==============================================================================
 
 RAW_DIR = "data/raw/dscovr"
 RESULTS_DIR = "results"
 CHI_SNAP_LIMIT = 0.15
+VACUUM_QUANTUM = 10.0  # Fixed Geometric Baseline (The Vacuum itself)
 
 def get_latest_file(directory):
     list_of_files = glob.glob(os.path.join(directory, '*.csv'))
@@ -21,39 +22,31 @@ def get_latest_file(directory):
 
 def calculate_vacuum_geometry(df):
     """
-    Applies Imperial Math to model the Sheet.
-    1. Baseline = Resting State
-    2. Chi = Tension Ratio
-    3. Depth = 3D Curvature
+    Applies Pure Imperial Math.
+    NO AVERAGES. NO ROLLING WINDOWS.
     """
-    print(">>> MAPPING VACUUM SHEET GEOMETRY...")
+    print(">>> MAPPING VACUUM SHEET GEOMETRY (RAW)...")
     
-    df['bt'] = pd.to_numeric(df['bt'], errors='coerce')
+    # Force numeric
+    df['bt'] = pd.to_numeric(df['bt'], errors='coerce').fillna(0)
     
-    # 1. BASELINE (Resting State)
-    # The sheet seeks equilibrium over time.
-    df['B_baseline'] = df['bt'].rolling(window=60, min_periods=1).mean()
+    # 1. BASELINE (Fixed Universal Constant, NOT an average)
+    df['B_baseline'] = VACUUM_QUANTUM
     
-    # 2. CHI RATIO (Tension)
-    # How tight is the sheet pulled?
-    df['CHI'] = abs(df['bt'] - df['B_baseline']) / df['B_baseline']
+    # 2. CHI RATIO (Geometric Tension)
+    # The absolute distance from the Vacuum Quantum
+    df['CHI'] = abs(df['bt'] - VACUUM_QUANTUM) / VACUUM_QUANTUM
     
-    # 3. VACUUM DEPTH (z)
-    # Standard Math calls this "Lattice Distortion". 
-    # Imperial Physics calls this "Sheet Depth".
-    planar_tension = (df['bt'] * 0.707)**2
-    df['SHEET_DEPTH'] = np.sqrt(planar_tension) / (1 + df['CHI'])
+    # 3. SHEET DEPTH (The Compression)
+    # Imperial 3D Projection based on instantaneous load
+    # r = magnitude relative to quantum
+    r = df['bt'] / VACUUM_QUANTUM
+    df['SHEET_DEPTH'] = r / (1 + df['CHI'])
     
     return df
 
-def filter_significant_events(df):
-    # Only keep data where the Sheet is moving (Chi > 0.05)
-    mask = (df['CHI'] > 0.05)
-    events = df[mask].copy()
-    return events
-
 def run_extrapolation():
-    print(">>> EXTRAPOLATOR ONLINE...")
+    print(">>> EXTRAPOLATOR ONLINE (MODE: INSTANTANEOUS)...")
     
     if not os.path.exists(RESULTS_DIR): os.makedirs(RESULTS_DIR)
         
@@ -65,28 +58,26 @@ def run_extrapolation():
     print(f"Source: {os.path.basename(data_file)}")
     df = pd.read_csv(data_file)
     
+    # RUN CALCULATION
     df_processed = calculate_vacuum_geometry(df)
-    df_results = filter_significant_events(df_processed)
+    
+    # Filter for significant events (Just to keep file size managed, or keep all)
+    # Keeping all for full fidelity
+    df_results = df_processed.copy()
     
     count = len(df_results)
-    print(f">>> SCAN COMPLETE. SHEET EVENTS: {count}")
-    
     if count > 0:
         now_str = datetime.utcnow().strftime("%Y%m%d_%H%M")
         save_path = os.path.join(RESULTS_DIR, f"gmvs_state_{now_str}.csv")
         
-        # Save Imperial Columns Only
+        # Save Imperial Columns
         cols = ['time_tag', 'bt', 'B_baseline', 'CHI', 'SHEET_DEPTH']
-        df_results[cols].to_csv(save_path, index=False)
-        print(f">>> SHEET DATA SECURED: {save_path}")
+        # Check if columns exist
+        existing_cols = [c for c in cols if c in df_results.columns]
+        df_results[existing_cols].to_csv(save_path, index=False)
         
-        max_chi = df_results['CHI'].max()
-        if max_chi >= CHI_SNAP_LIMIT:
-            print(f"!!! ALERT: VACUUM FRACTURE (Chi={max_chi:.4f})")
-        else:
-            print(f"Status: Stable (Max Chi={max_chi:.4f})")
-    else:
-        print(">>> VACUUM QUIET.")
+        print(f">>> CLEAN DATA SECURED: {save_path}")
+        print(f">>> MAX CHI: {df_results['CHI'].max():.4f}")
 
 if __name__ == "__main__":
     run_extrapolation()
