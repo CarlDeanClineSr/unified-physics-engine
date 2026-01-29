@@ -23,7 +23,7 @@ jobs:
       - name: Install All Dependencies
         run: pip install pandas numpy requests matplotlib
 
-      # STEP 0: HARVEST GROUND TRUTH (The "F" Fix)
+      # STEP 0: HARVEST GROUND TRUTH (Numbers, not Letters)
       - name: PHASE 0 - HARVEST GROUND DATA
         run: python scripts/fetch_ground_data.py
 
@@ -35,15 +35,19 @@ jobs:
       - name: PHASE 2 - RUN GMVS EXTRAPOLATOR
         run: python scripts/gmvs_extrapolator.py
 
-      # STEP 3: GENERATE EVIDENCE GRAPH
+      # STEP 3: GENERATE EVIDENCE GRAPH (The Oscilloscope)
       - name: PHASE 3 - GENERATE OSCILLOSCOPE
         run: python scripts/visualize_gmvs.py
 
-      # STEP 4: SAVE EVERYTHING
-      - name: PHASE 4 - SECURE RESULTS
+      # STEP 4: DETECT RESONANCE FREQUENCY (The Heartbeat)
+      - name: PHASE 4 - SCAN FOR HEARTBEAT
+        run: python scripts/gmvs_harmonic_scanner.py
+
+      # STEP 5: SAVE EVERYTHING
+      - name: PHASE 5 - SECURE RESULTS
         run: |
           git config --global user.name "Imperial-Engine"
           git config --global user.email "engine@imperial.physics"
           git add data/raw/usgs/ reports/ results/ evidence/
-          git commit -m "GMVS PIPELINE: Full Cycle Complete" || echo "No changes to commit"
+          git commit -m "GMVS PIPELINE: Harmonic Scan Complete" || echo "No changes to commit"
           git push
