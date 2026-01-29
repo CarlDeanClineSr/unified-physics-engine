@@ -1,12 +1,12 @@
 
 # GEOMAGNETIC VACUUM SHEET (GMVS) VERDICT
-**Generated:** 2026-01-29 21:49:47.838453+00:00
-**Space Node:** dscovr_l1_harvest_20260129_214845.csv
+**Generated:** 2026-01-29 22:19:45.213108+00:00
+**Space Node:** dscovr_l1_harvest_20260129_221209.csv
 **Ground Node:** FRD_harvest_20260129_2148.csv
 
 ## GMVS INTEGRITY: 🔴 FRACTURE DETECTED
 * **Peak Stress:** 0.4855
-* **Fracture Events (>0.15):** 1279
+* **Fracture Events (>0.15):** 1281
 
 ## INSTANTANEOUS LOAD EVENTS
 | Time (UTC) | Space Load (nT) | GMVS Stress | Ground Response |
