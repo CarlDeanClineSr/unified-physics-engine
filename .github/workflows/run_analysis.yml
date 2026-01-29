@@ -1,0 +1,35 @@
+name: IMPERIAL DATA ANALYSIS
+
+on:
+  workflow_dispatch:      # Manual trigger
+  schedule:
+    - cron: '10 * * * *'  # Runs at 10 minutes past hour (After harvests are done)
+
+permissions:
+  contents: write
+
+jobs:
+  run-correlator:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Engine
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install pandas numpy
+
+      - name: RUN THE ENGINE
+        run: python scripts/imperial_correlator.py
+
+      - name: Publish Verdict
+        run: |
+          git config --global user.name "Imperial-Analyst"
+          git config --global user.email "analysis@imperial.physics"
+          git add reports/
+          git commit -m "ANALYSIS COMPLETE: New Verdict Generated" || echo "No changes to report"
+          git push
