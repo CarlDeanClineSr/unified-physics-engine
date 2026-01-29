@@ -1,0 +1,35 @@
+name: IMPERIAL GROUND HARVEST
+
+on:
+  workflow_dispatch:      # Click button to run
+  schedule:
+    - cron: '5 * * * *'   # Runs 5 minutes after the hour (Offset from Satellite ingest)
+
+permissions:
+  contents: write
+
+jobs:
+  harvest-ground-nodes:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Engine
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install requests pandas
+
+      - name: Run Ground Fetcher
+        run: python scripts/fetch_ground_data.py
+
+      - name: Commit Surface Data
+        run: |
+          git config --global user.name "Imperial-Ground-Officer"
+          git config --global user.email "ground@imperial.physics"
+          git add data/raw/usgs/
+          git commit -m "GROUND HARVEST: Surface Node Update" || echo "No new ground data"
+          git push
