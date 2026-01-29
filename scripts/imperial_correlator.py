@@ -30,6 +30,9 @@ def calculate_chi(b_total, baseline=None):
         # Use a rolling average as dynamic baseline (Lattice Memory)
         baseline = b_total.rolling(window=60, min_periods=1).mean()
     
+    # Avoid division by zero
+    baseline = baseline.replace(0, 0.0001)
+    
     chi = abs(b_total - baseline) / baseline
     return chi
 
@@ -51,9 +54,14 @@ def analyze():
     df_ground = pd.read_csv(ground_file)
 
     # 2. SYNCHRONIZE TIME (The Universal Clock)
-    df_l1['time_tag'] = pd.to_datetime(df_l1['time_tag'])
-    df_ground['time_tag'] = pd.to_datetime(df_ground['time_tag'])
+    # FIX: We use 'utc=True' to force both clocks to match exactly.
+    df_l1['time_tag'] = pd.to_datetime(df_l1['time_tag'], utc=True)
+    df_ground['time_tag'] = pd.to_datetime(df_ground['time_tag'], utc=True)
     
+    # Round to nearest minute to handle slight sensor drift
+    df_l1['time_tag'] = df_l1['time_tag'].dt.floor('min')
+    df_ground['time_tag'] = df_ground['time_tag'].dt.floor('min')
+
     # Merge on the minute (Inner Join - only keep matching times)
     merged = pd.merge(df_l1, df_ground, on='time_tag', how='inner', suffixes=('_space', '_ground'))
 
@@ -89,10 +97,14 @@ def analyze():
     top_events = merged.nlargest(5, 'CHI_SPACE')
     for _, row in top_events.iterrows():
         # Handle ground columns (USGS uses different codes like BOUH or FRDH)
-        # We try to find the first column ending in 'H' (Horizontal intensity)
-        h_col = next((col for col in df_ground.columns if col.endswith('H')), 'N/A')
-        ground_val = row[h_col] if h_col != 'N/A' else "No Data"
+        # We try to find the first column ending in 'H' (Horizontal intensity) or 'F' (Total Field)
+        ground_col = next((col for col in df_ground.columns if col.endswith('H') or col.endswith('F')), 'N/A')
+        ground_val = row[ground_col] if ground_col != 'N/A' else "No Data"
         
+        # Identify non-generic column names if present
+        if ground_col == 'N/A' and len(df_ground.columns) > 1:
+             ground_val = row[df_ground.columns[1]] # Fallback to 2nd column
+
         report += f"| {row['time_tag']} | {row['bt']} | **{row['CHI_SPACE']:.4f}** | {ground_val} |\n"
 
     report += "\n\n**CONCLUSION:**\n"
