@@ -3,7 +3,7 @@ name: IMPERIAL DATA PIPELINE
 on:
   workflow_dispatch:      # Button to run manually
   schedule:
-    - cron: '15 * * * *'  # Runs automatically at 15 past every hour
+    - cron: '*/15 * * * *'  # RUNS EVERY 15 MINUTES (00, 15, 30, 45)
 
 permissions:
   contents: write
@@ -23,15 +23,15 @@ jobs:
       - name: Install All Dependencies
         run: pip install pandas numpy requests matplotlib
 
-      # STEP 0: HARVEST GROUND TRUTH (Numbers, not Letters)
+      # STEP 0: HARVEST GROUND TRUTH (Grabs Real Numbers)
       - name: PHASE 0 - HARVEST GROUND DATA
         run: python scripts/fetch_ground_data.py
 
-      # STEP 1: SYNC SPACE AND GROUND
+      # STEP 1: SYNC SPACE AND GROUND (Correlates L1 to Surface)
       - name: PHASE 1 - RUN GMVS CORRELATOR
         run: python scripts/imperial_correlator.py
 
-      # STEP 2: CALCULATE VACUUM GEOMETRY
+      # STEP 2: CALCULATE VACUUM GEOMETRY (Fixed Quantum 10.0 - No Averaging)
       - name: PHASE 2 - RUN GMVS EXTRAPOLATOR
         run: python scripts/gmvs_extrapolator.py
 
@@ -49,5 +49,5 @@ jobs:
           git config --global user.name "Imperial-Engine"
           git config --global user.email "engine@imperial.physics"
           git add data/raw/usgs/ reports/ results/ evidence/
-          git commit -m "GMVS PIPELINE: Harmonic Scan Complete" || echo "No changes to commit"
+          git commit -m "GMVS PIPELINE: 15-Min Cycle Complete" || echo "No changes to commit"
           git push
