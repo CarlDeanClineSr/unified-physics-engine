@@ -4,9 +4,8 @@ import pandas as pd
 import numpy as np
 
 # ==============================================================================
-# IMPERIAL PHYSICS CORRELATOR
-# PURPOSE: Prove Instantaneous Lattice Coherence (Space -> Ground)
-# AUTHORITY: Dr. Carl Dean Cline Sr.
+# IMPERIAL PHYSICS CORRELATOR (ROBUST MODE)
+# PURPOSE: Force Synchronization of Space (L1) and Ground (Surface) Data
 # ==============================================================================
 
 L1_DIR = "data/raw/dscovr"
@@ -14,113 +13,123 @@ GROUND_DIR = "data/raw/usgs"
 OUTPUT_FILE = "reports/IMPERIAL_VERDICT.md"
 
 def get_latest_file(directory):
-    """Finds the freshest data in the folder."""
+    """Finds the freshest data by sorting filenames (timestamps)."""
     list_of_files = glob.glob(os.path.join(directory, '*.csv'))
     if not list_of_files:
         return None
-    return max(list_of_files, key=os.path.getctime)
+    # Sort by name to get the latest timestamp in filename
+    return sorted(list_of_files)[-1]
 
-def calculate_chi(b_total, baseline=None):
-    """
-    Calculates the Imperial Chi Ratio.
-    Formula: |B - B0| / B0
-    The 0.15 Limit: If Chi > 0.15, the Lattice Snaps.
-    """
-    if baseline is None:
-        # Use a rolling average as dynamic baseline (Lattice Memory)
-        baseline = b_total.rolling(window=60, min_periods=1).mean()
+def calculate_chi(b_total):
+    """Calculates Imperial Chi. Avoids division by zero."""
+    # Ensure numeric
+    b_total = pd.to_numeric(b_total, errors='coerce').fillna(0)
     
-    # Avoid division by zero
-    baseline = baseline.replace(0, 0.0001)
+    # Calculate Baseline (Rolling Memory)
+    baseline = b_total.rolling(window=60, min_periods=1).mean()
+    baseline = baseline.replace(0, 0.0001) # Safety floor
     
     chi = abs(b_total - baseline) / baseline
     return chi
 
 def analyze():
-    print(">>> IMPERIAL CORRELATOR STARTING...")
+    print(">>> IMPERIAL CORRELATOR: DIAGNOSTIC SEQUENCE STARTING...")
     
     # 1. LOAD DATA
     l1_file = get_latest_file(L1_DIR)
     ground_file = get_latest_file(GROUND_DIR)
     
-    if not l1_file or not ground_file:
-        print("!!! DATA MISSING. RUN HARVESTERS FIRST.")
+    if not l1_file:
+        print("!!! ERROR: NO SATELLITE DATA FOUND.")
+        return
+    if not ground_file:
+        print("!!! ERROR: NO GROUND DATA FOUND.")
         return
 
-    print(f"Loading L1: {os.path.basename(l1_file)}")
-    print(f"Loading Ground: {os.path.basename(ground_file)}")
+    print(f"Space Node:  {os.path.basename(l1_file)}")
+    print(f"Ground Node: {os.path.basename(ground_file)}")
 
-    df_l1 = pd.read_csv(l1_file)
-    df_ground = pd.read_csv(ground_file)
+    try:
+        df_l1 = pd.read_csv(l1_file)
+        df_ground = pd.read_csv(ground_file)
+        
+        print(f"Loaded L1 Rows: {len(df_l1)}")
+        print(f"Loaded Ground Rows: {len(df_ground)}")
 
-    # 2. SYNCHRONIZE TIME (The Universal Clock)
-    # FIX: We use 'utc=True' to force both clocks to match exactly.
-    df_l1['time_tag'] = pd.to_datetime(df_l1['time_tag'], utc=True)
-    df_ground['time_tag'] = pd.to_datetime(df_ground['time_tag'], utc=True)
-    
-    # Round to nearest minute to handle slight sensor drift
-    df_l1['time_tag'] = df_l1['time_tag'].dt.floor('min')
-    df_ground['time_tag'] = df_ground['time_tag'].dt.floor('min')
+        # 2. FORCE TIME SYNCHRONIZATION (THE CRITICAL FIX)
+        # Convert both to datetime with UTC explicit
+        df_l1['time_tag'] = pd.to_datetime(df_l1['time_tag'], utc=True)
+        df_ground['time_tag'] = pd.to_datetime(df_ground['time_tag'], utc=True)
+        
+        # Round to minute to ignore seconds drift
+        df_l1['time_tag'] = df_l1['time_tag'].dt.floor('min')
+        df_ground['time_tag'] = df_ground['time_tag'].dt.floor('min')
 
-    # Merge on the minute (Inner Join - only keep matching times)
-    merged = pd.merge(df_l1, df_ground, on='time_tag', how='inner', suffixes=('_space', '_ground'))
+        print("Time tags standardized to UTC.")
 
-    if merged.empty:
-        print("!!! NO TIME OVERLAP FOUND. WAITING FOR MORE DATA.")
-        return
+        # 3. MERGE
+        merged = pd.merge(df_l1, df_ground, on='time_tag', how='inner', suffixes=('_space', '_ground'))
+        print(f">>> CORRELATION LOCKED. {len(merged)} SYNCHRONIZED EVENTS FOUND.")
 
-    # 3. COMPUTE IMPERIAL PHYSICS
-    # Standard 'bt' is Total Field magnitude
-    merged['CHI_SPACE'] = calculate_chi(merged['bt'])
-    
-    # Detect Snaps (Where Chi > 0.15)
-    snaps = merged[merged['CHI_SPACE'] > 0.15]
-    
-    # 4. GENERATE THE VERDICT
-    report = f"""
+        if merged.empty:
+            print("!!! WARNING: 0 CORRELATIONS. CHECK TIME RANGES.")
+            print(f"L1 Range: {df_l1['time_tag'].min()} to {df_l1['time_tag'].max()}")
+            print(f"Ground Range: {df_ground['time_tag'].min()} to {df_ground['time_tag'].max()}")
+            
+            # Write 'Wait' status to report
+            if not os.path.exists("reports"):
+                os.makedirs("reports")
+            with open(OUTPUT_FILE, "w") as f:
+                f.write("# IMPERIAL PHYSICS VERDICT\n**Status:** WAITING FOR OVERLAP.\nData is fresh, but time windows have not aligned yet.")
+            return
+
+        # 4. COMPUTE PHYSICS
+        if 'bt' not in merged.columns:
+            print("!!! ERROR: Column 'bt' missing from Satellite Data.")
+            return
+
+        merged['CHI_SPACE'] = calculate_chi(merged['bt'])
+        snaps = merged[merged['CHI_SPACE'] > 0.15]
+        
+        # 5. GENERATE VERDICT
+        max_chi = merged['CHI_SPACE'].max()
+        print(f"MAX CHI DETECTED: {max_chi:.4f}")
+
+        report = f"""
 # IMPERIAL PHYSICS VERDICT
-**Generated:** {pd.Timestamp.now()}
-**L1 Data:** {len(df_l1)} rows
-**Ground Data:** {len(df_ground)} rows
-**Correlated Events:** {len(merged)} minutes
+**Generated:** {pd.Timestamp.now(tz='UTC')}
+**Correlation Window:** {len(merged)} minutes
+**Space Source:** {os.path.basename(l1_file)}
+**Ground Source:** {os.path.basename(ground_file)}
 
-## THE 0.15 LAW STATUS
-* **Max Chi Detected:** {merged['CHI_SPACE'].max():.4f}
-* **Snap Events (Chi > 0.15):** {len(snaps)}
+## STATUS: {'🔴 ALERT' if len(snaps) > 0 else '🟢 NOMINAL'}
+* **Max Chi:** {max_chi:.4f}
+* **0.15 Violations:** {len(snaps)}
 
-## TOP 5 LATTICE STRESS EVENTS
-| Time (UTC) | Space Tension (nT) | Imperial Chi | Ground Response (H) |
+## TOP EVENTS (Highest Tension)
+| Time (UTC) | Space Tension (nT) | Imperial Chi | Ground Response |
 | :--- | :--- | :--- | :--- |
 """
-    
-    # Add top 5 events
-    top_events = merged.nlargest(5, 'CHI_SPACE')
-    for _, row in top_events.iterrows():
-        # Handle ground columns (USGS uses different codes like BOUH or FRDH)
-        # We try to find the first column ending in 'H' (Horizontal intensity) or 'F' (Total Field)
-        ground_col = next((col for col in df_ground.columns if col.endswith('H') or col.endswith('F')), 'N/A')
-        ground_val = row[ground_col] if ground_col != 'N/A' else "No Data"
         
-        # Identify non-generic column names if present
-        if ground_col == 'N/A' and len(df_ground.columns) > 1:
-             ground_val = row[df_ground.columns[1]] # Fallback to 2nd column
+        top_events = merged.nlargest(5, 'CHI_SPACE')
+        for _, row in top_events.iterrows():
+            # Find a magnetic column in ground data
+            ground_cols = [c for c in df_ground.columns if c not in ['time_tag'] and 'time' not in c]
+            g_val = row[ground_cols[0]] if ground_cols else "N/A"
+            
+            report += f"| {row['time_tag']} | {row['bt']} | **{row['CHI_SPACE']:.4f}** | {g_val} |\n"
+            
+        # 6. SAVE
+        if not os.path.exists("reports"):
+            os.makedirs("reports")
+        with open(OUTPUT_FILE, "w") as f:
+            f.write(report)
+            
+        print(">>> REPORT GENERATED SUCCESSFULLY.")
 
-        report += f"| {row['time_tag']} | {row['bt']} | **{row['CHI_SPACE']:.4f}** | {ground_val} |\n"
-
-    report += "\n\n**CONCLUSION:**\n"
-    if len(snaps) > 0:
-        report += "Lattice Snaps Detected. Check for instantaneous ground correlation."
-    else:
-        report += "Lattice Stable (Chi < 0.15). Accumulating baseline tension."
-
-    # 5. SAVE REPORT
-    if not os.path.exists("reports"):
-        os.makedirs("reports")
-    
-    with open(OUTPUT_FILE, "w") as f:
-        f.write(report)
-    
-    print(f">>> VERDICT WRITTEN TO: {OUTPUT_FILE}")
+    except Exception as e:
+        print(f"!!! FATAL ERROR IN CORRELATOR: {e}")
+        raise e
 
 if __name__ == "__main__":
     analyze()
