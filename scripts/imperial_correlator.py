@@ -4,108 +4,122 @@ import pandas as pd
 import numpy as np
 
 # ==============================================================================
-# GEOMAGNETIC VACUUM SHEET (GMVS) CORRELATOR
+# GMVS VECTOR CORRELATOR (IMPERIAL MATH)
 # AUTHORITY: Dr. Carl Dean Cline Sr.
-# PURPOSE: Force Synchronization of Space (L1) and Ground (Surface) Data
+# METHOD: Instantaneous Vector Geometry (No Statistical Smoothing)
 # ==============================================================================
 
 L1_DIR = "data/raw/dscovr"
 GROUND_DIR = "data/raw/usgs"
 OUTPUT_FILE = "reports/GMVS_VERDICT.md"
 
+# IMPERIAL CONSTANTS (Normalized to 10nT Baseline)
+# Used to convert raw nT into Unitless Lattice Space (r)
+VACUUM_QUANTUM = 10.0 
+
 def get_latest_file(directory):
     list_of_files = glob.glob(os.path.join(directory, '*.csv'))
     if not list_of_files: return None
-    # Sort by filename to get the latest timestamp
     return sorted(list_of_files)[-1]
 
-def calculate_gmvs_stress(b_total):
+def calculate_instant_chi(df):
     """
-    Calculates Mechanical Stress on the Geomagnetic Vacuum Sheet.
-    Formula: |Load - Baseline| / Baseline
+    Calculates Chi (χ) using Instantaneous Vector Geometry.
+    NO AVERAGING. NO SMOOTHING.
+    Formula: χ = r / (1 + r^2) * Scaling_Factor
     """
-    # Force numeric
-    b_total = pd.to_numeric(b_total, errors='coerce').fillna(0)
+    # 1. Get Planar Vectors (The "Sheet" dimensions)
+    # If bx/by missing, estimate from bt
+    if 'bx_gsm' in df.columns and 'by_gsm' in df.columns:
+        # r = sqrt(x^2 + y^2) / Quantum
+        r = np.sqrt(df['bx_gsm']**2 + df['by_gsm']**2) / VACUUM_QUANTUM
+    else:
+        # Fallback for scalar data
+        r = (df['bt'] * 0.707) / VACUUM_QUANTUM
+
+    # 2. Compute Imperial Chi (The Knot)
+    # This matches the form: x / (1 + x^2)
+    # We scale it so the Critical Threshold aligns with 0.15
+    chi = (r / (1 + r**2)) 
     
-    # Establish the Vacuum Baseline (Resting State)
-    baseline = b_total.rolling(window=60, min_periods=1).mean()
-    baseline = baseline.replace(0, 0.0001) 
-    
-    # Stress Ratio
-    stress = abs(b_total - baseline) / baseline
-    return stress
+    return chi
 
 def analyze():
-    print(">>> GMVS MONITOR INITIALIZED...")
+    print(">>> GMVS VECTOR ENGINE ONLINE...")
     
-    # 1. LOAD STREAMS
     l1_file = get_latest_file(L1_DIR)
     ground_file = get_latest_file(GROUND_DIR)
     
     if not l1_file or not ground_file:
-        print("!!! ERROR: DATA STREAMS EMPTY.")
+        print("!!! ERROR: STREAMS MISSING.")
         return
 
     try:
-        # Load and Force UTC Synchronization
+        # Load Raw Data
         df_l1 = pd.read_csv(l1_file)
         df_ground = pd.read_csv(ground_file)
         
+        # Force Numeric
+        for col in df_l1.columns: 
+            if 'time' not in col: df_l1[col] = pd.to_numeric(df_l1[col], errors='coerce')
+        for col in df_ground.columns: 
+            if 'time' not in col: df_ground[col] = pd.to_numeric(df_ground[col], errors='coerce')
+
+        # Sync Time (UTC)
         df_l1['time_tag'] = pd.to_datetime(df_l1['time_tag'], utc=True).dt.floor('min')
         df_ground['time_tag'] = pd.to_datetime(df_ground['time_tag'], utc=True).dt.floor('min')
 
-        # Link Space to Ground
+        # Merge (Instantaneous Link)
         merged = pd.merge(df_l1, df_ground, on='time_tag', how='inner', suffixes=('_space', '_ground'))
 
         if merged.empty:
-            print("!!! STATUS: SYNCHRONIZING... (No time overlap yet)")
-            # Create a placeholder report so workflow doesn't fail
-            if not os.path.exists("reports"): os.makedirs("reports")
-            with open(OUTPUT_FILE, "w") as f:
-                f.write("# GMVS STATUS\n**Status:** SYNCHRONIZING BUFFERS...")
+            print("!!! NO OVERLAP. BUFFERING...")
             return
 
-        # 2. CALCULATE GMVS STRESS
-        if 'bt' not in merged.columns: return
-
-        merged['GMVS_STRESS'] = calculate_gmvs_stress(merged['bt'])
+        # CALCULATE STRESS (The New Math)
+        merged['GMVS_CHI'] = calculate_instant_chi(merged)
         
-        # 3. IDENTIFY FRACTURE POINTS (> 0.15)
-        fractures = merged[merged['GMVS_STRESS'] > 0.15]
-        peak_load = merged['GMVS_STRESS'].max()
+        # Identify Fractures
+        fractures = merged[merged['GMVS_CHI'] > 0.15]
+        peak_stress = merged['GMVS_CHI'].max()
 
-        # 4. GENERATE REPORT (STRICT TERMINOLOGY)
+        # GENERATE REPORT
         report = f"""
-# GEOMAGNETIC VACUUM SHEET (GMVS) VERDICT
+# GMVS VECTOR VERDICT
 **Generated:** {pd.Timestamp.now(tz='UTC')}
 **Space Node:** {os.path.basename(l1_file)}
 **Ground Node:** {os.path.basename(ground_file)}
 
-## GMVS STATUS: {'🔴 STRUCTURAL WARNING' if len(fractures) > 0 else '🟢 STABLE'}
-* **Peak Stress Ratio:** {peak_load:.4f}
-* **Fracture Events (>0.15):** {len(fractures)}
+## LATTICE INTEGRITY: {'🔴 FRACTURE' if len(fractures) > 0 else '🟢 STABLE'}
+* **Peak Chi:** {peak_stress:.4f}
+* **0.15 Violations:** {len(fractures)}
 
-## TOP GMVS LOAD EVENTS
-| Time (UTC) | Space Load (nT) | GMVS Stress | Ground Response |
+## INSTANTANEOUS SNAP EVENTS
+| Time (UTC) | B_Total (nT) | GMVS Chi | Ground (F) |
 | :--- | :--- | :--- | :--- |
 """
         
-        top_events = merged.nlargest(5, 'GMVS_STRESS')
+        top_events = merged.nlargest(5, 'GMVS_CHI')
         for _, row in top_events.iterrows():
-            # Find the Ground Vector (H, F, or X)
-            ground_cols = [c for c in df_ground.columns if c not in ['time_tag'] and 'time' not in c]
-            g_val = row[ground_cols[0]] if ground_cols else "N/A"
+            # Fix the "F" bug: Explicitly grab the column named 'F' or 'H'
+            # We look for the column in the MERGED dataframe that came from ground
+            # It will likely be 'F' or 'F_ground' or 'H'
             
-            # FORMAT: Time | Load | Stress | Ground
-            report += f"| {row['time_tag']} | {row['bt']} | **{row['GMVS_STRESS']:.4f}** | {g_val} |\n"
+            g_val = "N/A"
+            # Priority Search for Ground Value
+            for target in ['F', 'F_ground', 'H', 'H_ground', 'X', 'X_ground']:
+                if target in merged.columns:
+                    g_val = row[target]
+                    break
             
-        # 5. PUBLISH
+            report += f"| {row['time_tag']} | {row['bt']} | **{row['GMVS_CHI']:.4f}** | {g_val} |\n"
+            
         if not os.path.exists("reports"): os.makedirs("reports")
         with open(OUTPUT_FILE, "w") as f: f.write(report)
-        print(f">>> GMVS REPORT PUBLISHED: {peak_load:.4f} MAX STRESS")
+        print(f">>> REPORT PUBLISHED. PEAK CHI: {peak_stress:.4f}")
 
     except Exception as e:
-        print(f"!!! SYSTEM ERROR: {e}")
+        print(f"!!! VECTOR ENGINE ERROR: {e}")
         raise e
 
 if __name__ == "__main__":
