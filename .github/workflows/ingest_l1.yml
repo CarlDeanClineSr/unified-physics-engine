@@ -1,0 +1,35 @@
+name: IMPERIAL L1 HARVEST
+
+on:
+  workflow_dispatch:      # Click button to run
+  schedule:
+    - cron: '0 * * * *'   # Runs every hour automatically
+
+permissions:
+  contents: write
+
+jobs:
+  harvest-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Engine
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Dependencies
+        run: pip install requests pandas
+
+      - name: Run L1 Fetcher
+        run: python scripts/fetch_l1_data.py
+
+      - name: Commit New Data
+        run: |
+          git config --global user.name "Imperial-Data-Officer"
+          git config --global user.email "data@imperial.physics"
+          git add data/raw/dscovr/
+          git commit -m "L1 HARVEST: New Lattice Data Secured" || echo "No new data found"
+          git push
