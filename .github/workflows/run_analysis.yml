@@ -1,35 +1,49 @@
-name: IMPERIAL DATA ANALYSIS
+name: IMPERIAL DATA PIPELINE
 
 on:
-  workflow_dispatch:      # Manual trigger
+  workflow_dispatch:      # Button to run manually
   schedule:
-    - cron: '10 * * * *'  # Runs at 10 minutes past hour (After harvests are done)
+    - cron: '15 * * * *'  # Runs automatically at 15 past every hour
 
 permissions:
   contents: write
 
 jobs:
-  run-correlator:
+  imperial-logic-engine:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Engine
+      - name: Checkout The Core
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Initialize Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
 
-      - name: Install Dependencies
-        run: pip install pandas numpy
+      - name: Install All Dependencies
+        run: pip install pandas numpy requests matplotlib
 
-      - name: RUN THE ENGINE
+      # STEP 0: HARVEST GROUND TRUTH (The "F" Fix)
+      - name: PHASE 0 - HARVEST GROUND DATA
+        run: python scripts/fetch_ground_data.py
+
+      # STEP 1: SYNC SPACE AND GROUND
+      - name: PHASE 1 - RUN GMVS CORRELATOR
         run: python scripts/imperial_correlator.py
 
-      - name: Publish Verdict
+      # STEP 2: CALCULATE VACUUM GEOMETRY
+      - name: PHASE 2 - RUN GMVS EXTRAPOLATOR
+        run: python scripts/gmvs_extrapolator.py
+
+      # STEP 3: GENERATE EVIDENCE GRAPH
+      - name: PHASE 3 - GENERATE OSCILLOSCOPE
+        run: python scripts/visualize_gmvs.py
+
+      # STEP 4: SAVE EVERYTHING
+      - name: PHASE 4 - SECURE RESULTS
         run: |
-          git config --global user.name "Imperial-Analyst"
-          git config --global user.email "analysis@imperial.physics"
-          git add reports/
-          git commit -m "ANALYSIS COMPLETE: New Verdict Generated" || echo "No changes to report"
+          git config --global user.name "Imperial-Engine"
+          git config --global user.email "engine@imperial.physics"
+          git add data/raw/usgs/ reports/ results/ evidence/
+          git commit -m "GMVS PIPELINE: Full Cycle Complete" || echo "No changes to commit"
           git push
