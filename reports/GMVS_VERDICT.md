@@ -1,18 +1,18 @@
 
-# GEOMAGNETIC VACUUM SHEET (GMVS) VERDICT
-**Generated:** 2026-01-29 21:00:41.792716+00:00
-**Space Node:** dscovr_l1_harvest_20260129_200828.csv
-**Ground Node:** FRD_harvest_20260129_2014.csv
+# GMVS VECTOR VERDICT
+**Generated:** 2026-01-29 21:18:29.442367+00:00
+**Space Node:** dscovr_l1_harvest_20260129_210847.csv
+**Ground Node:** FRD_harvest_20260129_2113.csv
 
-## GMVS STATUS: 🔴 STRUCTURAL WARNING
-* **Peak Stress Ratio:** 0.7166
-* **Fracture Events (>0.15):** 145
+## LATTICE INTEGRITY: 🔴 FRACTURE
+* **Peak Chi:** 0.4896
+* **0.15 Violations:** 1279
 
-## TOP GMVS LOAD EVENTS
-| Time (UTC) | Space Load (nT) | GMVS Stress | Ground Response |
+## INSTANTANEOUS SNAP EVENTS
+| Time (UTC) | B_Total (nT) | GMVS Chi | Ground (F) |
 | :--- | :--- | :--- | :--- |
-| 2026-01-29 04:05:00+00:00 | 1.56 | **0.7166** | F |
-| 2026-01-29 02:36:00+00:00 | 1.68 | **0.7078** | F |
-| 2026-01-29 04:08:00+00:00 | 1.97 | **0.6342** | F |
-| 2026-01-29 02:46:00+00:00 | 2.49 | **0.5733** | F |
-| 2026-01-29 06:16:00+00:00 | 2.61 | **0.5545** | F |
+| 2026-01-28 21:42:00+00:00 | 8.28 | **0.4896** | N/A |
+| 2026-01-28 21:46:00+00:00 | 8.36 | **0.4894** | N/A |
+| 2026-01-28 21:43:00+00:00 | 8.09 | **0.4889** | N/A |
+| 2026-01-28 21:45:00+00:00 | 8.19 | **0.4887** | N/A |
+| 2026-01-28 21:48:00+00:00 | 8.48 | **0.4875** | N/A |
