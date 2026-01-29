@@ -1,3 +1,4 @@
+```python
 import os
 import glob
 import pandas as pd
@@ -5,17 +6,14 @@ import numpy as np
 from datetime import datetime
 
 # ==============================================================================
-# GMVS EXTRAPOLATOR (PURE IMPERIAL)
+# GMVS EXTRAPOLATOR (ADAPTIVE IMPERIAL)
 # AUTHORITY: Dr. Carl Dean Cline Sr.
-# STATUS: RECALIBRATED (L1 Deep Space Baseline)
+# STATUS: AUTO-CALIBRATED (Median Baseline)
 # ==============================================================================
 
 RAW_DIR = "data/raw/dscovr"
 RESULTS_DIR = "results"
 CHI_LIMIT = 0.15
-
-# BASELINE: L1 vacuum density (measured)
-VACUUM_QUANTUM = 4.0 
 
 def get_latest_file(directory):
     list_of_files = glob.glob(os.path.join(directory, '*.csv'))
@@ -24,33 +22,35 @@ def get_latest_file(directory):
 
 def calculate_vacuum_geometry(df):
     """
-    Pure Imperial Math.
-    Direct lattice state calculation.
+    Adaptive Imperial Math.
+    Median defines lattice rest state.
     """
     print(">>> MAPPING VACUUM SHEET GEOMETRY...")
     
     df['bt'] = pd.to_numeric(df['bt'], errors='coerce').fillna(0)
     
-    # BASELINE (Fixed)
-    df['B_baseline'] = VACUUM_QUANTUM
+    # BASELINE (Normalized)
+    baseline = df['bt'].median()
+    if baseline == 0: baseline = 1.0 
+    df['B_baseline'] = baseline
     
     # CHI (Geometric Tension)
-    df['CHI'] = abs(df['bt'] - VACUUM_QUANTUM) / VACUUM_QUANTUM
+    df['CHI'] = abs(df['bt'] - baseline) / baseline
     
     # SHEET DEPTH (Compression Index)
-    r = df['bt'] / VACUUM_QUANTUM
+    r = df['bt'] / baseline
     df['SHEET_DEPTH'] = r / (1 + df['CHI'])
     
     return df
 
 def run_extrapolation():
-    print(">>> EXTRAPOLATOR ONLINE (MODE: INSTANTANEOUS)...")
+    print(">>> EXTRAPOLATOR ONLINE (MODE: ADAPTIVE)...")
     
     if not os.path.exists(RESULTS_DIR): os.makedirs(RESULTS_DIR)
         
     data_file = get_latest_file(RAW_DIR)
     if not data_file:
-        print("!!! HALT: No data.")
+        print("!!! HALT: No Data.")
         return
         
     print(f"Source: {os.path.basename(data_file)}")
@@ -58,8 +58,8 @@ def run_extrapolation():
     
     df_processed = calculate_vacuum_geometry(df)
     df_results = df_processed.copy()
-    
     count = len(df_results)
+    
     if count > 0:
         now_str = datetime.utcnow().strftime("%Y%m%d_%H%M")
         save_path = os.path.join(RESULTS_DIR, f"gmvs_state_{now_str}.csv")
@@ -69,7 +69,9 @@ def run_extrapolation():
         df_results[existing_cols].to_csv(save_path, index=False)
         
         print(f">>> STATE LOGGED: {save_path}")
+        print(f">>> BASELINE: {df_results['B_baseline'].iloc[0]:.4f} nT")
         print(f">>> MAX CHI: {df_results['CHI'].max():.4f}")
 
 if __name__ == "__main__":
     run_extrapolation()
+```
