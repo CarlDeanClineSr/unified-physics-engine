@@ -1,7 +1,7 @@
 
 # GEOMAGNETIC VACUUM SHEET (GMVS) VERDICT
-**Generated:** 2026-01-30 14:58:57.648198+00:00
-**Space Node:** dscovr_l1_harvest_20260130_141426.csv
+**Generated:** 2026-01-30 15:16:42.515359+00:00
+**Space Node:** dscovr_l1_harvest_20260130_151218.csv
 **Ground Node:** FRD_harvest_20260129_2148.csv
 
 ## GMVS INTEGRITY: 🔴 FRACTURE DETECTED
