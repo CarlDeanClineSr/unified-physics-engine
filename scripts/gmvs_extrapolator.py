@@ -73,4 +73,3 @@ def run_extrapolation():
 
 if __name__ == "__main__":
     run_extrapolation()
-```
